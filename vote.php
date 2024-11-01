@@ -3,65 +3,50 @@ header('Content-Type: application/json');
 
 // 允許跨域請求（如果需要的話）
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, DELETE');
+header('Access-Control-Allow-Methods: GET, POST');
+header('Access-Control-Allow-Headers: Content-Type');
 
-// 讀取投票數據
-function getVotes() {
-    if (!file_exists('votes.json')) {
-        file_put_contents('votes.json', json_encode(['votes' => []]));
-    }
-    return json_decode(file_get_contents('votes.json'), true);
+// 設置投票數據文件路徑
+$votesFile = 'votes.json';
+
+// 如果文件不存在，創建一個空的投票數據文件
+if (!file_exists($votesFile)) {
+    file_put_contents($votesFile, json_encode(['votes' => []]));
 }
 
-// 保存投票數據
-function saveVotes($votes) {
-    file_put_contents('votes.json', json_encode($votes, JSON_PRETTY_PRINT));
-}
-
-// 重置特定圖片的投票
-function resetVote($imageId) {
-    $votes = getVotes();
-    if (isset($votes['votes'][$imageId])) {
-        $votes['votes'][$imageId] = 0;
-        saveVotes($votes);
-    }
-    return $votes['votes'][$imageId] ?? 0;
-}
-
-// 重置所有投票
-function resetAllVotes() {
-    $votes = ['votes' => []];
-    saveVotes($votes);
-    return $votes;
-}
+// 讀取現有投票數據
+$votesData = json_decode(file_get_contents($votesFile), true);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data = json_decode(file_get_contents('php://input'), true);
+    $input = json_decode(file_get_contents('php://input'), true);
     
-    if (isset($data['action']) && $data['action'] === 'reset') {
-        if (isset($data['imageId'])) {
-            // 重置特定圖片的投票
-            $newCount = resetVote($data['imageId']);
-            echo json_encode(['success' => true, 'votes' => $newCount]);
+    // 處理重置操作
+    if (isset($input['action']) && $input['action'] === 'reset') {
+        if (isset($input['imageId'])) {
+            // 重置單張圖片的投票
+            $votesData['votes'][$input['imageId']] = 0;
         } else {
             // 重置所有投票
-            $votes = resetAllVotes();
-            echo json_encode(['success' => true, 'votes' => $votes]);
+            $votesData['votes'] = [];
         }
-    } else {
-        // 一般投票處理
-        $imageId = $data['imageId'];
-        $votes = getVotes();
-        if (!isset($votes['votes'][$imageId])) {
-            $votes['votes'][$imageId] = 0;
-        }
-        $votes['votes'][$imageId]++;
-        saveVotes($votes);
-        echo json_encode(['success' => true, 'votes' => $votes['votes'][$imageId]]);
+        file_put_contents($votesFile, json_encode($votesData));
+        echo json_encode(['success' => true, 'votes' => $votesData['votes']]);
+        exit;
     }
-} else {
-    // 獲取所有投票數據
-    $votes = getVotes();
-    echo json_encode($votes);
+    
+    // 處理投票操作
+    if (isset($input['imageId'])) {
+        $imageId = $input['imageId'];
+        if (!isset($votesData['votes'][$imageId])) {
+            $votesData['votes'][$imageId] = 0;
+        }
+        $votesData['votes'][$imageId]++;
+        file_put_contents($votesFile, json_encode($votesData));
+        echo json_encode(['success' => true, 'votes' => $votesData['votes'][$imageId]]);
+        exit;
+    }
 }
+
+// GET 請求返回所有投票數據
+echo json_encode($votesData);
 ?>

@@ -1,5 +1,5 @@
 const CONFIG = {
-    API_KEY: 'AIzaSyBKxuRVfj_d8EBT-v3kBgWNeCOvYfF1t50',  // 請將新生成的 API 金鑰貼在這裡（應該是以 AIzaSy 開頭）
+    API_KEY: 'AIzaSyBKxuRVfj_d8EBT-v3kBgWNeCOvYfF1t50',
     FOLDERS: [
         {
             id: '1-97a7cI4gRbH2B-5mGC4TqR5lebayRb_',
@@ -11,11 +11,11 @@ const CONFIG = {
         },
         {
             id: '1-9hc5N0TkssXi9I9sc2wGO3hmJbA0jnY',
-            defaultName: 'Album 3'  // 系統會自動獲取實際的文件夾名稱
+            defaultName: 'Album 3'
         },
         {
             id: '1H8cK1O99k12fT0yM-iZa2MqtIevjCvlP',
-            defaultName: 'Album 4'  // 系統會自動獲取實際的文件夾名稱
+            defaultName: 'Album 4'
         },
         {
             id: '1aRTp8jCwqo5WT7jnXXaE3DEEAsU-unBw',
@@ -23,3 +23,33 @@ const CONFIG = {
         }
     ]
 };
+
+async function loadAllFolderNames() {
+    const promises = CONFIG.FOLDERS.map(async folder => {
+        try {
+            const response = await fetch(`https://www.googleapis.com/drive/v3/files/${folder.id}?fields=name&key=${CONFIG.API_KEY}`);
+            if (!response.ok) throw new Error('API request failed');
+            const data = await response.json();
+            return {
+                id: folder.id,
+                name: data.name
+            };
+        } catch (error) {
+            console.error('Error fetching folder name:', error);
+            return {
+                id: folder.id,
+                name: folder.defaultName
+            };
+        }
+    });
+
+    return Promise.all(promises);
+}
+
+function handleError(error) {
+    console.error('Error loading album:', error);
+    const loadingStatus = document.getElementById('loading-status');
+    if (loadingStatus) {
+        loadingStatus.innerHTML = '<span style="color: red;">載入失敗，請重試</span>';
+    }
+}

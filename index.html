@@ -14,7 +14,10 @@
                 <!-- 按鈕將由 JavaScript 動態生成 -->
             </div>
             <div class="reset-controls" style="text-align: center; margin: 10px 0;">
-                <button class="btn" onclick="resetAllVotes()" style="background-color: #ff4444;">重置所有投票</button>
+                <button class="btn reset-btn" style="background-color: #ff4444;">重置所有投票</button>
+            </div>
+            <div id="loading-status" style="text-align: center; margin: 10px 0;">
+                <span>正在載入相冊資料...</span>
             </div>
         </div>
         <div class="content-wrapper" id="contentWrapper">
@@ -53,73 +56,93 @@
         }
 
         async function switchFolder(folderId, button) {
-            // 更新按鈕狀態
-            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
+            try {
+                // 更新按鈕狀態
+                document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
 
-            // 更新文件夾名稱
-            document.getElementById('folderName').textContent = '載入中...';
-            const folderName = await getFolderName(folderId);
-            document.getElementById('folderName').textContent = folderName;
-            button.textContent = folderName;
+                // 更新文件夾名稱
+                document.getElementById('folderName').textContent = '載入中...';
+                const folderName = await getFolderName(folderId);
+                document.getElementById('folderName').textContent = folderName;
 
-            // 更新 Google Drive 連結
-            const driveUrl = `https://drive.google.com/drive/folders/${folderId}`;
-            document.getElementById('folderLink').href = driveUrl;
+                // 更新 Google Drive 連結
+                const driveUrl = `https://drive.google.com/drive/folders/${folderId}`;
+                document.getElementById('folderLink').href = driveUrl;
 
-            // 載入照片
-            const photos = await loadPhotos(folderId);
-            const votes = await loadVotes();
-            const photoGrid = document.getElementById('photoGrid');
-            photoGrid.innerHTML = '';
+                // 載入照片
+                const photos = await loadPhotos(folderId);
+                const votes = await loadVotes();
+                const photoGrid = document.getElementById('photoGrid');
+                photoGrid.innerHTML = '';
 
-            photos.forEach(photo => {
-                const photoDiv = document.createElement('div');
-                photoDiv.className = 'photo-item';
-                
-                // 使用較高品質的圖片URL作為縮圖
-                const highQualityThumbnail = photo.thumbnailLink.replace('=s220', '=s1024');
-                // 使用最高品質的圖片URL作為原始圖片
-                const originalImage = photo.thumbnailLink.replace('=s220', '=s2048');
-                
-                photoDiv.innerHTML = `
-                    <img src="${highQualityThumbnail}" 
-                         alt="${photo.name}"
-                         loading="lazy"
-                         style="width: 100%; height: 100%; object-fit: cover;">
-                    <div class="zoom-icon">🔍</div>
-                    ${createVoteContainer(photo, votes).outerHTML}
-                `;
+                photos.forEach(photo => {
+                    const photoDiv = document.createElement('div');
+                    photoDiv.className = 'photo-item';
+                    
+                    // 使用較高品質的圖片URL作為縮圖
+                    const highQualityThumbnail = photo.thumbnailLink.replace('=s220', '=s1024');
+                    // 使用最高品質的圖片URL作為原始圖片
+                    const originalImage = photo.thumbnailLink.replace('=s220', '=s2048');
+                    
+                    photoDiv.innerHTML = `
+                        <img src="${highQualityThumbnail}" 
+                             alt="${photo.name}"
+                             loading="lazy"
+                             style="width: 100%; height: 100%; object-fit: cover;">
+                        <div class="zoom-icon">🔍</div>
+                        ${createVoteContainer(photo, votes).outerHTML}
+                    `;
 
-                // 添加點擊事件
-                photoDiv.onclick = (e) => {
-                    // 如果點擊的是投票按鈕或重置按鈕，不執行放大功能
-                    if (e.target.closest('.vote-container')) {
-                        return;
-                    }
-                    // 在新視窗中開啟原始大小的圖片
-                    window.open(originalImage, '_blank');
-                };
+                    // 添加點擊事件
+                    photoDiv.onclick = (e) => {
+                        // 如果點擊的是投票按鈕或重置按鈕，不執行放大功能
+                        if (e.target.closest('.vote-container')) {
+                            return;
+                        }
+                        // 在新視窗中開啟原始大小的圖片
+                        window.open(originalImage, '_blank');
+                    };
 
-                photoGrid.appendChild(photoDiv);
-            });
+                    photoGrid.appendChild(photoDiv);
+                });
+            } catch (error) {
+                handleError(error);
+            }
         }
 
-        // 初始化按鈕和文件夾
+        // 修改 initialize 函數
         async function initialize() {
-            const buttonContainer = document.getElementById('folderButtons');
-            
-            for (const folder of CONFIG.FOLDERS) {
-                const button = document.createElement('button');
-                button.className = 'btn';
-                button.textContent = '載入中...';
-                button.onclick = () => switchFolder(folder.id, button);
-                buttonContainer.appendChild(button);
+            try {
+                const buttonContainer = document.getElementById('folderButtons');
+                
+                // 預先載入所有相冊名稱
+                const folderNames = await loadAllFolderNames();
+                
+                folderNames.forEach((folder, index) => {
+                    const button = document.createElement('button');
+                    button.className = 'btn';
+                    button.textContent = folder.name;  // 直接使用已載入的名稱
+                    button.onclick = () => switchFolder(folder.id, button);
+                    buttonContainer.appendChild(button);
 
-                // 如果是第一個文件夾，立即觸發切換
-                if (folder === CONFIG.FOLDERS[0]) {
-                    button.classList.add('active');
-                    switchFolder(folder.id, button);
+                    // 如果是第一個相冊，自動觸發切換
+                    if (index === 0) {
+                        button.classList.add('active');
+                        switchFolder(folder.id, button);
+                    }
+                });
+
+                // 隱藏載入狀態
+                const loadingStatus = document.getElementById('loading-status');
+                if (loadingStatus) {
+                    loadingStatus.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error initializing:', error);
+                const loadingStatus = document.getElementById('loading-status');
+                if (loadingStatus) {
+                    loadingStatus.innerHTML = '<span style="color: red;">載入失敗，請重試</span>';
                 }
             }
         }
