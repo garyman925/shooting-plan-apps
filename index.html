@@ -10,6 +10,10 @@
     <div class="container">
         <div id="headerSection">
             <h1>我的相片集</h1>
+            <div class="add-folder-section" style="margin: 10px 0; text-align: center;">
+                <input type="text" id="newFolderUrl" placeholder="輸入 Google Drive 資料夾連結" style="width: 300px; padding: 8px;">
+                <button class="btn" onclick="addNewFolder()" style="margin-left: 10px;">添加相冊</button>
+            </div>
             <div class="controls" id="folderButtons">
                 <!-- 按鈕將由 JavaScript 動態生成 -->
             </div>
@@ -94,15 +98,15 @@
                         ${createVoteContainer(photo, votes).outerHTML}
                     `;
 
-                    // 添加點擊事件
-                    photoDiv.onclick = (e) => {
-                        // 如果點擊的是投票按鈕或重置按鈕，不執行放大功能
+                    // 修改點擊事件處理
+                    photoDiv.addEventListener('click', (e) => {
+                        // 如果點擊的是投票容器或其子元素，不執行放大功能
                         if (e.target.closest('.vote-container')) {
                             return;
                         }
                         // 在新視窗中開啟原始大小的圖片
                         window.open(originalImage, '_blank');
-                    };
+                    });
 
                     photoGrid.appendChild(photoDiv);
                 });
@@ -178,7 +182,7 @@
 
         // 重置投票函數
         async function resetAllVotes() {
-            if (!confirm('確定要重置所有投票嗎？此操作無法撤銷。')) {
+            if (!confirm('確定要重置所有投票嗎？此操作無法銷。')) {
                 return;
             }
             
@@ -200,17 +204,21 @@
             }
         }
 
+        // 修改 createVoteContainer 函數
         function createVoteContainer(photo, votes) {
             const voteContainer = document.createElement('div');
             voteContainer.className = 'vote-container';
+            const currentVotes = votes[photo.id] || 0;
             voteContainer.innerHTML = `
-                <button class="vote-button">❤</button>
-                <span class="vote-count">${votes[photo.id] || 0}</span>
+                <button class="vote-button ${currentVotes > 0 ? 'voted' : ''}">❤</button>
+                <span class="vote-count">${currentVotes}</span>
                 <button class="reset-button" style="margin-left: 5px; font-size: 12px;">重置</button>
             `;
 
+            // 修改重置按鈕的點擊事件
             const resetButton = voteContainer.querySelector('.reset-button');
-            resetButton.onclick = async (e) => {
+            resetButton.addEventListener('click', async (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 if (!confirm('確定要重置這張圖片的投票嗎？')) {
                     return;
@@ -231,17 +239,46 @@
                     voteContainer.querySelector('.vote-count').textContent = '0';
                     voteContainer.querySelector('.vote-button').classList.remove('voted');
                 }
-            };
+            });
 
-            // 添加投票功能
-            voteContainer.onclick = async (e) => {
-                if (e.target === resetButton) return;
-                const newVotes = await vote(photo.id);
-                if (newVotes !== null) {
-                    voteContainer.querySelector('.vote-count').textContent = newVotes;
-                    voteContainer.querySelector('.vote-button').classList.add('voted');
+            // 修改投票按鈕的點擊事件
+            const voteButton = voteContainer.querySelector('.vote-button');
+            const voteCountSpan = voteContainer.querySelector('.vote-count');
+            
+            voteButton.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (voteButton.classList.contains('voted')) {
+                    return; // 如果已經投票，不允許重複投票
                 }
-            };
+
+                try {
+                    const response = await fetch('vote.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ imageId: photo.id }),
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        // 更新投票數顯示
+                        const newVotes = data.votes;
+                        voteCountSpan.textContent = newVotes;
+                        voteButton.classList.add('voted');
+                        
+                        // 添加���畫效果
+                        voteCountSpan.style.animation = 'none';
+                        voteCountSpan.offsetHeight; // 觸發重繪
+                        voteCountSpan.style.animation = 'voteCountUpdate 0.5s ease-out';
+                    }
+                } catch (error) {
+                    console.error('Error voting:', error);
+                    alert('投票失敗，請稍後再試');
+                }
+            });
 
             return voteContainer;
         }
@@ -263,6 +300,99 @@
                 contentWrapper.classList.remove('fixed');
             }
         });
+
+        async function addNewFolder() {
+            const urlInput = document.getElementById('newFolderUrl');
+            const url = urlInput.value.trim();
+            
+            // 驗證URL
+            if (!url) {
+                alert('請輸入 Google Drive 資料夾連結');
+                return;
+            }
+
+            // 從URL中提取資料夾ID
+            let folderId = '';
+            try {
+                if (url.includes('/folders/')) {
+                    folderId = url.split('/folders/')[1].split('?')[0].split('/')[0];
+                } else if (url.includes('id=')) {
+                    folderId = url.split('id=')[1].split('&')[0];
+                } else {
+                    throw new Error('無效的 Google Drive 連結');
+                }
+            } catch (error) {
+                alert('請輸入有效的 Google Drive 資料夾連結');
+                return;
+            }
+
+            try {
+                // 檢查資料夾是否存在且可訪問
+                const response = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=name&key=${CONFIG.API_KEY}`);
+                if (!response.ok) throw new Error('無法訪問此資料夾');
+                const data = await response.json();
+
+                // 創建新按鈕
+                const buttonContainer = document.getElementById('folderButtons');
+                const button = document.createElement('button');
+                button.className = 'btn';
+                button.textContent = data.name;
+                button.onclick = () => switchFolder(folderId, button);
+                buttonContainer.appendChild(button);
+
+                // 清空輸入框
+                urlInput.value = '';
+
+                // 自動切換到新添加的相冊
+                button.click();
+
+                // 可選：將新資料夾保存到本地存儲
+                const savedFolders = JSON.parse(localStorage.getItem('additionalFolders') || '[]');
+                savedFolders.push({ id: folderId, name: data.name });
+                localStorage.setItem('additionalFolders', JSON.stringify(savedFolders));
+
+            } catch (error) {
+                alert('無法添加此資料夾：' + error.message);
+            }
+        }
+
+        // 修改 initialize 函數，加載保存的額外資料夾
+        async function initialize() {
+            try {
+                const buttonContainer = document.getElementById('folderButtons');
+                
+                // 載入配置的資料夾
+                const folderNames = await loadAllFolderNames();
+                
+                // 載入本地存儲的額外資料夾
+                const savedFolders = JSON.parse(localStorage.getItem('additionalFolders') || '[]');
+                const allFolders = [...folderNames, ...savedFolders];
+                
+                allFolders.forEach((folder, index) => {
+                    const button = document.createElement('button');
+                    button.className = 'btn';
+                    button.textContent = folder.name;
+                    button.onclick = () => switchFolder(folder.id, button);
+                    buttonContainer.appendChild(button);
+
+                    if (index === 0) {
+                        button.classList.add('active');
+                        switchFolder(folder.id, button);
+                    }
+                });
+
+                const loadingStatus = document.getElementById('loading-status');
+                if (loadingStatus) {
+                    loadingStatus.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error initializing:', error);
+                const loadingStatus = document.getElementById('loading-status');
+                if (loadingStatus) {
+                    loadingStatus.innerHTML = '<span style="color: red;">載入失敗，請重試</span>';
+                }
+            }
+        }
     </script>
 </body>
 </html>

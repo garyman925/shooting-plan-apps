@@ -16,6 +16,9 @@ if (!file_exists($votesFile)) {
 
 // 讀取現有投票數據
 $votesData = json_decode(file_get_contents($votesFile), true);
+if (!isset($votesData['votes'])) {
+    $votesData['votes'] = [];
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
@@ -42,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $votesData['votes'][$imageId]++;
         file_put_contents($votesFile, json_encode($votesData));
+        // 返回更新後的投票數
         echo json_encode(['success' => true, 'votes' => $votesData['votes'][$imageId]]);
         exit;
     }
