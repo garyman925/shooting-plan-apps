@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>相片集</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div id="headerSection">
+            <h1>我的相片集</h1>
+            <div class="controls" id="folderButtons">
+                <!-- 按鈕將由 JavaScript 動態生成 -->
+            </div>
+            <div class="reset-controls" style="text-align: center; margin: 10px 0;">
+                <button class="btn" onclick="resetAllVotes()" style="background-color: #ff4444;">重置所有投票</button>
+            </div>
+        </div>
+        <div class="content-wrapper" id="contentWrapper">
+            <div id="folderInfo">
+                <h2 id="folderName">載入中...</h2>
+                <a id="folderLink" href="#" target="_blank" style="display: block; margin-bottom: 20px;">在 Google Drive 中開啟</a>
+            </div>
+            <div id="photoGrid" class="photo-container"></div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        async function getFolderName(folderId) {
+            try {
+                const response = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=name&key=${CONFIG.API_KEY}`);
+                if (!response.ok) throw new Error('API request failed');
+                const data = await response.json();
+                return data.name;
+            } catch (error) {
+                console.error('Error fetching folder name:', error);
+                const folder = CONFIG.FOLDERS.find(f => f.id === folderId);
+                return folder ? folder.defaultName : '未命名相冊';
+            }
+        }
+
+        async function loadPhotos(folderId) {
+            try {
+                const response = await fetch(`https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType+contains+'image/'&key=${CONFIG.API_KEY}&fields=files(id,name,thumbnailLink,webContentLink,imageMediaMetadata)`);
+                const data = await response.json();
+                return data.files || [];
+            } catch (error) {
+                console.error('Error loading photos:', error);
+                return [];
+            }
+        }
+
+        async function switchFolder(folderId, button) {
+            // 更新按鈕狀態
+            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+
+            // 更新文件夾名稱
+            document.getElementById('folderName').textContent = '載入中...';
+            const folderName = await getFolderName(folderId);
+            document.getElementById('folderName').textContent = folderName;
+            button.textContent = folderName;
+
+            // 更新 Google Drive 連結
+            const driveUrl = `https://drive.google.com/drive/folders/${folderId}`;
+            document.getElementById('folderLink').href = driveUrl;
+
+            // 載入照片
+            const photos = await loadPhotos(folderId);
+            const votes = await loadVotes();
+            const photoGrid = document.getElementById('photoGrid');
+            photoGrid.innerHTML = '';
+
+            photos.forEach(photo => {
+                const photoDiv = document.createElement('div');
+                photoDiv.className = 'photo-item';
+                
+                // 使用較高品質的圖片URL作為縮圖
+                const highQualityThumbnail = photo.thumbnailLink.replace('=s220', '=s1024');
+                // 使用最高品質的圖片URL作為原始圖片
+                const originalImage = photo.thumbnailLink.replace('=s220', '=s2048');
+                
+                photoDiv.innerHTML = `
+                    <img src="${highQualityThumbnail}" 
+                         alt="${photo.name}"
+                         loading="lazy"
+                         style="width: 100%; height: 100%; object-fit: cover;">
+                    <div class="zoom-icon">🔍</div>
+                    ${createVoteContainer(photo, votes).outerHTML}
+                `;
+
+                // 添加點擊事件
+                photoDiv.onclick = (e) => {
+                    // 如果點擊的是投票按鈕或重置按鈕，不執行放大功能
+                    if (e.target.closest('.vote-container')) {
+                        return;
+                    }
+                    // 在新視窗中開啟原始大小的圖片
+                    window.open(originalImage, '_blank');
+                };
+
+                photoGrid.appendChild(photoDiv);
+            });
+        }
+
+        // 初始化按鈕和文件夾
+        async function initialize() {
+            const buttonContainer = document.getElementById('folderButtons');
+            
+            for (const folder of CONFIG.FOLDERS) {
+                const button = document.createElement('button');
+                button.className = 'btn';
+                button.textContent = '載入中...';
+                button.onclick = () => switchFolder(folder.id, button);
+                buttonContainer.appendChild(button);
+
+                // 如果是第一個文件夾，立即觸發切換
+                if (folder === CONFIG.FOLDERS[0]) {
+                    button.classList.add('active');
+                    switchFolder(folder.id, button);
+                }
+            }
+        }
+
+        // 投票相關函數
+        async function loadVotes() {
+            try {
+                const response = await fetch('vote.php');
+                const data = await response.json();
+                return data.votes || {};
+            } catch (error) {
+                console.error('Error loading votes:', error);
+                return {};
+            }
+        }
+
+        async function vote(imageId) {
+            try {
+                const response = await fetch('vote.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ imageId }),
+                });
+                const data = await response.json();
+                return data.votes;
+            } catch (error) {
+                console.error('Error voting:', error);
+                return null;
+            }
+        }
+
+        // 重置投票函數
+        async function resetAllVotes() {
+            if (!confirm('確定要重置所有投票嗎？此操作無法撤銷。')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('vote.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ action: 'reset' }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Error resetting votes:', error);
+                alert('重置失敗，請稍後再試。');
+            }
+        }
+
+        function createVoteContainer(photo, votes) {
+            const voteContainer = document.createElement('div');
+            voteContainer.className = 'vote-container';
+            voteContainer.innerHTML = `
+                <button class="vote-button">❤</button>
+                <span class="vote-count">${votes[photo.id] || 0}</span>
+                <button class="reset-button" style="margin-left: 5px; font-size: 12px;">重置</button>
+            `;
+
+            const resetButton = voteContainer.querySelector('.reset-button');
+            resetButton.onclick = async (e) => {
+                e.stopPropagation();
+                if (!confirm('確定要重置這張圖片的投票嗎？')) {
+                    return;
+                }
+                
+                const response = await fetch('vote.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        action: 'reset',
+                        imageId: photo.id 
+                    }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    voteContainer.querySelector('.vote-count').textContent = '0';
+                    voteContainer.querySelector('.vote-button').classList.remove('voted');
+                }
+            };
+
+            // 添加投票功能
+            voteContainer.onclick = async (e) => {
+                if (e.target === resetButton) return;
+                const newVotes = await vote(photo.id);
+                if (newVotes !== null) {
+                    voteContainer.querySelector('.vote-count').textContent = newVotes;
+                    voteContainer.querySelector('.vote-button').classList.add('voted');
+                }
+            };
+
+            return voteContainer;
+        }
+
+        // 啟動應用
+        initialize();
+
+        // 添加滾動監聽
+        window.addEventListener('scroll', function() {
+            const headerSection = document.getElementById('headerSection');
+            const contentWrapper = document.getElementById('contentWrapper');
+            const scrollPosition = window.scrollY;
+
+            if (scrollPosition > 50) {  // 當滾動超過 50px 時
+                headerSection.classList.add('header-fixed');
+                contentWrapper.classList.add('fixed');
+            } else {
+                headerSection.classList.remove('header-fixed');
+                contentWrapper.classList.remove('fixed');
+            }
+        });
+    </script>
+</body>
+</html>
