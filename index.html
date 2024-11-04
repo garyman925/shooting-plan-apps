@@ -269,7 +269,7 @@
                         voteCountSpan.textContent = newVotes;
                         voteButton.classList.add('voted');
                         
-                        // 添加���畫效果
+                        // 添加畫效果
                         voteCountSpan.style.animation = 'none';
                         voteCountSpan.offsetHeight; // 觸發重繪
                         voteCountSpan.style.animation = 'voteCountUpdate 0.5s ease-out';
@@ -346,10 +346,11 @@
                 // 自動切換到新添加的相冊
                 button.click();
 
-                // 可選：將新資料夾保存到本地存儲
-                const savedFolders = JSON.parse(localStorage.getItem('additionalFolders') || '[]');
-                savedFolders.push({ id: folderId, name: data.name });
-                localStorage.setItem('additionalFolders', JSON.stringify(savedFolders));
+                // 將原來使用 localStorage 的部分替換為：
+                const saved = await addFolderToConfig({ id: folderId, name: data.name });
+                if (!saved) {
+                    throw new Error('無法保存資料夾配置');
+                }
 
             } catch (error) {
                 alert('無法添加此資料夾：' + error.message);

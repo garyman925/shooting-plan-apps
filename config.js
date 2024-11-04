@@ -21,8 +21,7 @@ const CONFIG = {
             id: '1aRTp8jCwqo5WT7jnXXaE3DEEAsU-unBw',
             defaultName: 'Album 5' 
         }
-    ]
-};
+    ]};
 
 async function loadAllFolderNames() {
     const promises = CONFIG.FOLDERS.map(async folder => {
@@ -38,12 +37,40 @@ async function loadAllFolderNames() {
             console.error('Error fetching folder name:', error);
             return {
                 id: folder.id,
-                name: folder.defaultName
+                name: folder.defaultName || '未命名相冊'
             };
         }
     });
 
     return Promise.all(promises);
+}
+
+// 添加新資料夾到 config.js
+async function addFolderToConfig(folder) {
+    try {
+        const response = await fetch('save_folder.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(folder)
+        });
+        
+        if (!response.ok) {
+            throw new Error('保存失敗');
+        }
+        
+        // 添加到當前的 CONFIG 對象
+        CONFIG.FOLDERS.push({
+            id: folder.id,
+            defaultName: folder.name
+        });
+        
+        return true;
+    } catch (error) {
+        console.error('Error saving folder:', error);
+        return false;
+    }
 }
 
 function handleError(error) {
