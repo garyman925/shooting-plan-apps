@@ -8,7 +8,8 @@
 </head>
 <body>
     <div class="container">
-        <div id="headerSection">
+        <button id="toggleHeader" class="toggle-btn">☰ 設定</button>
+        <div id="headerSection" class="header-section hidden">
             <h1>我的相片集</h1>
             <div class="add-folder-section" style="margin: 10px 0; text-align: center;">
                 <input type="text" id="newFolderUrl" placeholder="輸入 Google Drive 資料夾連結" style="width: 300px; padding: 8px;">
@@ -16,9 +17,6 @@
             </div>
             <div class="controls" id="folderButtons">
                 <!-- 按鈕將由 JavaScript 動態生成 -->
-            </div>
-            <div class="reset-controls" style="text-align: center; margin: 10px 0;">
-                <button class="btn reset-btn" style="background-color: #ff4444;">重置所有投票</button>
             </div>
             <div id="loading-status" style="text-align: center; margin: 10px 0;">
                 <span>正在載入相冊資料...</span>
@@ -76,7 +74,6 @@
 
                 // 載入照片
                 const photos = await loadPhotos(folderId);
-                const votes = await loadVotes();
                 const photoGrid = document.getElementById('photoGrid');
                 photoGrid.innerHTML = '';
 
@@ -95,16 +92,10 @@
                              loading="lazy"
                              style="width: 100%; height: 100%; object-fit: cover;">
                         <div class="zoom-icon">🔍</div>
-                        ${createVoteContainer(photo, votes).outerHTML}
                     `;
 
-                    // 修改點擊事件處理
-                    photoDiv.addEventListener('click', (e) => {
-                        // 如果點擊的是投票容器或其子元素，不執行放大功能
-                        if (e.target.closest('.vote-container')) {
-                            return;
-                        }
-                        // 在新視窗中開啟原始大小的圖片
+                    // 點擊事件處理
+                    photoDiv.addEventListener('click', () => {
                         window.open(originalImage, '_blank');
                     });
 
@@ -149,138 +140,6 @@
                     loadingStatus.innerHTML = '<span style="color: red;">載入失敗，請重試</span>';
                 }
             }
-        }
-
-        // 投票相關函數
-        async function loadVotes() {
-            try {
-                const response = await fetch('vote.php');
-                const data = await response.json();
-                return data.votes || {};
-            } catch (error) {
-                console.error('Error loading votes:', error);
-                return {};
-            }
-        }
-
-        async function vote(imageId) {
-            try {
-                const response = await fetch('vote.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ imageId }),
-                });
-                const data = await response.json();
-                return data.votes;
-            } catch (error) {
-                console.error('Error voting:', error);
-                return null;
-            }
-        }
-
-        // 重置投票函數
-        async function resetAllVotes() {
-            if (!confirm('確定要重置所有投票嗎？此操作無法銷。')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch('vote.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ action: 'reset' }),
-                });
-                const data = await response.json();
-                if (data.success) {
-                    location.reload();
-                }
-            } catch (error) {
-                console.error('Error resetting votes:', error);
-                alert('重置失敗，請稍後再試。');
-            }
-        }
-
-        // 修改 createVoteContainer 函數
-        function createVoteContainer(photo, votes) {
-            const voteContainer = document.createElement('div');
-            voteContainer.className = 'vote-container';
-            const currentVotes = votes[photo.id] || 0;
-            voteContainer.innerHTML = `
-                <button class="vote-button ${currentVotes > 0 ? 'voted' : ''}">❤</button>
-                <span class="vote-count">${currentVotes}</span>
-                <button class="reset-button" style="margin-left: 5px; font-size: 12px;">重置</button>
-            `;
-
-            // 修改重置按鈕的點擊事件
-            const resetButton = voteContainer.querySelector('.reset-button');
-            resetButton.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!confirm('確定要重置這張圖片的投票嗎？')) {
-                    return;
-                }
-                
-                const response = await fetch('vote.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        action: 'reset',
-                        imageId: photo.id 
-                    }),
-                });
-                const data = await response.json();
-                if (data.success) {
-                    voteContainer.querySelector('.vote-count').textContent = '0';
-                    voteContainer.querySelector('.vote-button').classList.remove('voted');
-                }
-            });
-
-            // 修改投票按鈕的點擊事件
-            const voteButton = voteContainer.querySelector('.vote-button');
-            const voteCountSpan = voteContainer.querySelector('.vote-count');
-            
-            voteButton.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                if (voteButton.classList.contains('voted')) {
-                    return; // 如果已經投票，不允許重複投票
-                }
-
-                try {
-                    const response = await fetch('vote.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ imageId: photo.id }),
-                    });
-                    
-                    const data = await response.json();
-                    if (data.success) {
-                        // 更新投票數顯示
-                        const newVotes = data.votes;
-                        voteCountSpan.textContent = newVotes;
-                        voteButton.classList.add('voted');
-                        
-                        // 添加畫效果
-                        voteCountSpan.style.animation = 'none';
-                        voteCountSpan.offsetHeight; // 觸發重繪
-                        voteCountSpan.style.animation = 'voteCountUpdate 0.5s ease-out';
-                    }
-                } catch (error) {
-                    console.error('Error voting:', error);
-                    alert('投票失敗，請稍後再試');
-                }
-            });
-
-            return voteContainer;
         }
 
         // 啟動應用
@@ -357,43 +216,34 @@
             }
         }
 
-        // 修改 initialize 函數，加載保存的額外資料夾
-        async function initialize() {
-            try {
-                const buttonContainer = document.getElementById('folderButtons');
-                
-                // 載入配置的資料夾
-                const folderNames = await loadAllFolderNames();
-                
-                // 載入本地存儲的額外資料夾
-                const savedFolders = JSON.parse(localStorage.getItem('additionalFolders') || '[]');
-                const allFolders = [...folderNames, ...savedFolders];
-                
-                allFolders.forEach((folder, index) => {
-                    const button = document.createElement('button');
-                    button.className = 'btn';
-                    button.textContent = folder.name;
-                    button.onclick = () => switchFolder(folder.id, button);
-                    buttonContainer.appendChild(button);
+        document.getElementById('toggleHeader').addEventListener('click', function() {
+            const headerSection = document.getElementById('headerSection');
+            headerSection.classList.toggle('hidden');
+            
+            // 如果 header 被隱藏，移除 fixed 類
+            if (headerSection.classList.contains('hidden')) {
+                headerSection.classList.remove('header-fixed');
+                document.getElementById('contentWrapper').classList.remove('fixed');
+            }
+        });
 
-                    if (index === 0) {
-                        button.classList.add('active');
-                        switchFolder(folder.id, button);
-                    }
-                });
+        // 修改滾動監聽函數
+        window.addEventListener('scroll', function() {
+            const headerSection = document.getElementById('headerSection');
+            const contentWrapper = document.getElementById('contentWrapper');
+            const scrollPosition = window.scrollY;
 
-                const loadingStatus = document.getElementById('loading-status');
-                if (loadingStatus) {
-                    loadingStatus.style.display = 'none';
-                }
-            } catch (error) {
-                console.error('Error initializing:', error);
-                const loadingStatus = document.getElementById('loading-status');
-                if (loadingStatus) {
-                    loadingStatus.innerHTML = '<span style="color: red;">載入失敗，請重試</span>';
+            // 只在 header 未被隱藏時應用固定效果
+            if (!headerSection.classList.contains('hidden')) {
+                if (scrollPosition > 50) {
+                    headerSection.classList.add('header-fixed');
+                    contentWrapper.classList.add('fixed');
+                } else {
+                    headerSection.classList.remove('header-fixed');
+                    contentWrapper.classList.remove('fixed');
                 }
             }
-        }
+        });
     </script>
 </body>
 </html>
